@@ -23,6 +23,7 @@ TZ={
 "Netherlands":"Europe/Amsterdam",
 "Germany":"Europe/Berlin",
 "Great Britain":"Europe/London",
+"United Kingdom of Great Britain and Northern Ireland":"Europe/London",
 "Austria":"Europe/Vienna",
 "Japan":"Asia/Tokyo",
 "Indonesia":"Asia/Makassar",
