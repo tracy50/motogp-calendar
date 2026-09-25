@@ -12,6 +12,7 @@ TZ={
 "Thailand":"Asia/Bangkok",
 "Brazil":"America/Sao_Paulo",
 "United States":"America/Chicago",
+"United States of America":"America/Chicago",
 "USA":"America/Chicago",
 "Spain":"Europe/Madrid",
 "France":"Europe/Paris",
