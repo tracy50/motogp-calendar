@@ -41,14 +41,34 @@ def get(path):
     req=urllib.request.Request(BASE+path,headers={"User-Agent":"Mozilla/5.0","Accept":"application/json"})
     with urllib.request.urlopen(req,timeout=30) as r: return json.load(r)
 
-def dt(s):
-    if not s:return None
-    s=str(s).replace("Z","+00:00")
-    try:return datetime.fromisoformat(s)
-    except:return None
-
 def esc(s):
     return str(s).replace("\\","\\\\").replace("\n","\\n").replace(",","\\,").replace(";","\\;")
+
+def dt(s, event):
+    if not s:
+        return None
+
+    raw = str(s).strip().replace("Z", "+00:00")
+
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+
+    country = (event.get("country") or {}).get("name", "")
+    tzname = TZ.get(country)
+
+    if not tzname:
+        raise RuntimeError(
+            f"缺少賽道時區設定: {country} / {event.get('name')}"
+        )
+
+    # MotoGP API 的 session date 視為賽道當地鐘面時間
+    local_time = parsed.replace(tzinfo=None).replace(
+        tzinfo=ZoneInfo(tzname)
+    )
+
+    return local_time.astimezone(timezone.utc)
 
 def round_name(e):
     c=(e.get("country") or {}).get("name","")
@@ -80,7 +100,7 @@ for e in events:
     for s in sessions:
         typ=str(s.get("type","")).upper()
         if typ not in ("SPR","RAC"):continue
-        start=dt(s.get("date"))
+        start=dt(s.get("date"), e)
         if not start:continue
         if start.tzinfo is None:start=start.replace(tzinfo=timezone.utc)
         start=start.astimezone(timezone.utc)
