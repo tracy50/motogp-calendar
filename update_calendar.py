@@ -2,11 +2,35 @@
 import json, urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 BASE="https://api.motogp.pulselive.com/motogp/v1"
 YEAR=2026
 OUT=Path("motogp-calendar.ics")
 
+TZ={
+"Thailand":"Asia/Bangkok",
+"Brazil":"America/Sao_Paulo",
+"United States":"America/Chicago",
+"USA":"America/Chicago",
+"Spain":"Europe/Madrid",
+"France":"Europe/Paris",
+"Italy":"Europe/Rome",
+"Hungary":"Europe/Budapest",
+"Czechia":"Europe/Prague",
+"Czech Republic":"Europe/Prague",
+"Netherlands":"Europe/Amsterdam",
+"Germany":"Europe/Berlin",
+"Great Britain":"Europe/London",
+"Austria":"Europe/Vienna",
+"Japan":"Asia/Tokyo",
+"Indonesia":"Asia/Makassar",
+"Australia":"Australia/Melbourne",
+"Malaysia":"Asia/Kuala_Lumpur",
+"Qatar":"Asia/Qatar",
+"Portugal":"Europe/Lisbon",
+"San Marino":"Europe/Rome"
+}
 ZH={"Thailand":"泰國站","Brazil":"巴西站","United States":"美國站","Spain":"西班牙站",
 "France":"法國站","Italy":"義大利站","Hungary":"匈牙利站","Czechia":"捷克站",
 "Czech Republic":"捷克站","Netherlands":"荷蘭站","Germany":"德國站","Great Britain":"英國站",
