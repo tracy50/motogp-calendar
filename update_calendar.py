@@ -5,7 +5,6 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 BASE="https://api.motogp.pulselive.com/motogp/v1"
-YEAR=2026
 OUT=Path("motogp-calendar.ics")
 
 TZ={
@@ -82,10 +81,29 @@ def round_name(e):
     return c+"站" if c else "MotoGP"
 
 seasons=get("/results/seasons")
-season=next(x for x in seasons if x.get("year")==YEAR)
-events=get(f"/results/events?seasonUuid={season['id']}")
-if isinstance(events,dict):events=events.get("events") or events.get("data") or []
 
+# 優先使用 MotoGP API 標記的目前賽季
+current_seasons=[
+    x for x in seasons
+    if x.get("current") is True
+]
+
+if current_seasons:
+    season=max(current_seasons, key=lambda x: x.get("year", 0))
+else:
+    # 若 API 沒有 current 標記，使用最新賽季作為備援
+    valid_seasons=[
+        x for x in seasons
+        if isinstance(x.get("year"), int)
+    ]
+    if not valid_seasons:
+        raise RuntimeError("MotoGP API 找不到有效賽季")
+
+    season=max(valid_seasons, key=lambda x: x["year"])
+
+print("Using MotoGP season:", season.get("year"))
+
+events=get(f"/results/events?seasonUuid={season['id']}")
 items=[]
 for e in events:
     eid=e.get("id")
