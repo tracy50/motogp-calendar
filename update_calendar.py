@@ -124,6 +124,27 @@ for e in events:
         if not start:continue
         if start.tzinfo is None:start=start.replace(tzinfo=timezone.utc)
         start=start.astimezone(timezone.utc)
+        # 修正 2026 年葡萄牙及瓦倫西亞延期一週的賽程
+if season.get("year") == 2026:
+    country = (e.get("country") or {}).get("name", "")
+    circuit = (e.get("circuit") or {}).get("name", "")
+    corrections = {
+        ("Portugal", "Autódromo Internacional do Algarve", "SPR"):
+            ("2026-11-14", "2026-11-21"),
+        ("Portugal", "Autódromo Internacional do Algarve", "RAC"):
+            ("2026-11-15", "2026-11-22"),
+        ("Spain", "Circuit Ricardo Tormo", "SPR"):
+            ("2026-11-21", "2026-11-28"),
+        ("Spain", "Circuit Ricardo Tormo", "RAC"):
+            ("2026-11-22", "2026-11-29"),
+    }
+    correction = corrections.get((country, circuit, typ))
+    if correction:
+        old_date, new_date = correction
+        track_tz = ZoneInfo(TZ[country])
+
+        if start.astimezone(track_tz).date().isoformat() == old_date:
+            start += timedelta(days=7)
         sprint=typ=="SPR"
         items.append((start,s.get("id") or eid+"-"+typ,
                       f"MotoGP｜{round_name(e)}｜{'衝刺賽' if sprint else '正賽'}",
