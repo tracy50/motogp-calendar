@@ -303,7 +303,6 @@ def parse_calendar_ranges(page_text, year):
             r"(?P<d2>\d{1,2})\s+"
             r"(?P<m2>[A-Za-z]+)\s+(?P<y>\d{4})"
         ),
-
         re.compile(
             r"(?P<d1>\d{1,2})\s+"
             r"(?P<m1>[A-Za-z]+)\s*[-–]\s*"
@@ -311,7 +310,6 @@ def parse_calendar_ranges(page_text, year):
             r"(?P<m2>[A-Za-z]+)\s+"
             r"(?P<y>\d{4})"
         ),
-
         re.compile(
             r"(?P<d1>\d{1,2})\s*[-–]\s*"
             r"(?P<d2>\d{1,2})\s+"
@@ -321,7 +319,6 @@ def parse_calendar_ranges(page_text, year):
     ]
 
     for pattern in patterns:
-
         for match in pattern.finditer(page_text):
 
             if any(
@@ -331,10 +328,7 @@ def parse_calendar_ranges(page_text, year):
                 continue
 
             try:
-                month2 = MONTHS[
-                    match.group("m2").lower()
-                ]
-
+                month2 = MONTHS[match.group("m2").lower()]
                 d1 = int(match.group("d1"))
                 d2 = int(match.group("d2"))
 
@@ -360,13 +354,20 @@ def parse_calendar_ranges(page_text, year):
                 if not 1 <= (end - start).days <= 4:
                     continue
 
-                context = page_text[
-                    max(0, match.start() - 220):
+                # 同時保留日期前後的網頁文字
+                before = page_text[
+                    max(0, match.start() - 500):
                     match.start()
                 ]
 
-                found.append((start, end, context))
+                after = page_text[
+                    match.end():
+                    min(len(page_text), match.end() + 500)
+                ]
 
+                context = before + " <<<DATE>>> " + after
+
+                found.append((start, end, context))
                 occupied.append(
                     (match.start(), match.end())
                 )
