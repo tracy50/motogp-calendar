@@ -477,41 +477,61 @@ def match_official_weekend(event, ranges):
 
     for start, end, context in ranges:
 
-        context_n = norm(context[-220:])
+        parts = context.split("<<<DATE>>>", 1)
 
-        occurrences = []
+        if len(parts) != 2:
+            continue
+
+        before = norm(parts[0])
+        after = norm(parts[1])
+
+        candidates = []
 
         for label in KNOWN_OFFICIAL_LABELS:
 
-            pos = context_n.rfind(label)
+            label_n = norm(label)
 
-            if pos >= 0:
-                occurrences.append((pos, label))
+            if not label_n:
+                continue
 
-        if not occurrences:
+            # 找日期前方最近的分站名稱
+            pos_before = before.rfind(label_n)
+
+            if pos_before >= 0:
+                distance = len(before) - (
+                    pos_before + len(label_n)
+                )
+
+                candidates.append(
+                    (distance, label_n)
+                )
+
+            # 找日期後方最近的分站名稱
+            pos_after = after.find(label_n)
+
+            if pos_after >= 0:
+                candidates.append(
+                    (pos_after, label_n)
+                )
+
+        if not candidates:
             continue
 
-        latest_pos = max(
-            pos for pos, _ in occurrences
+        nearest_distance = min(
+            distance for distance, _ in candidates
         )
 
-        latest_labels = {
+        nearest_labels = {
             label
-            for pos, label in occurrences
-            if pos == latest_pos
+            for distance, label in candidates
+            if distance == nearest_distance
         }
 
-        if (
-            len(latest_labels) == 1
-            and latest_labels.intersection(labels)
-        ):
-            matches.append(
-                (
-                    len(context_n) - latest_pos,
-                    start,
-                    end
-                )
-            )
+        if len(nearest_labels) != 1:
+            continue
+
+        if nearest_labels.intersection(labels):
+            matches.append((start, end))
 
     if not matches:
 
@@ -524,22 +544,15 @@ def match_official_weekend(event, ranges):
             f"官方賽程找不到分站日期：{name}"
         )
 
-    nearest = min(x[0] for x in matches)
+    unique_matches = set(matches)
 
-    best = {
-        (x[1], x[2])
-        for x in matches
-        if x[0] == nearest
-    }
-
-    if len(best) != 1:
+    if len(unique_matches) != 1:
         raise RuntimeError(
-            f"官方賽程日期比對不唯一：{best}"
+            f"官方賽程日期比對不唯一：{unique_matches}"
         )
 
-    return next(iter(best))
-
-
+    return next(iter(unique_matches))
+    
 # ============================================================
 # 時區處理
 # ============================================================
