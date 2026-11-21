@@ -531,7 +531,7 @@ def match_official_weekend(event, ranges):
             continue
 
         if nearest_labels.intersection(labels):
-            matches.append((start, end))
+            matches.append((nearest_distance, start, end))
 
     if not matches:
 
@@ -544,14 +544,19 @@ def match_official_weekend(event, ranges):
             f"官方賽程找不到分站日期：{name}"
         )
 
-    unique_matches = set(matches)
+        nearest_distance = min(match[0] for match in matches)
+    best_matches = {
+        (start, end)
+        for distance, start, end in matches
+        if distance == nearest_distance
+    }
 
-    if len(unique_matches) != 1:
+    if len(best_matches) != 1:
         raise RuntimeError(
-            f"官方賽程日期比對不唯一：{unique_matches}"
+            f"官方賽程日期比對不唯一：{best_matches}"
         )
 
-    return next(iter(unique_matches))
+    return next(iter(best_matches))
     
 # ============================================================
 # 時區處理
