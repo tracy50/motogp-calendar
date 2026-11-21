@@ -544,7 +544,7 @@ def match_official_weekend(event, ranges):
             f"官方賽程找不到分站日期：{name}"
         )
 
-        nearest_distance = min(match[0] for match in matches)
+    nearest_distance = min(match[0] for match in matches)
     best_matches = {
         (start, end)
         for distance, start, end in matches
