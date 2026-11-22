@@ -516,7 +516,8 @@ def fetch_official_event_weekend(event, year):
     date_pattern = re.compile(
         r"(?P<d1>\d{1,2})\s+(?:(?P<m1>[A-Za-z]{3,9})\s*)?"
         r"[-–]\s*(?P<d2>\d{1,2})\s+"
-        r"(?P<m2>[A-Za-z]{3,9})\s+(?P<year>\d{4})"
+        r"(?P<m2>[A-Za-z]{3,9})"
+        r"(?:\s+(?P<year>\d{4}))?"
     )
     label_pattern = re.compile(rf"\b{re.escape(labels[0])}\b", re.IGNORECASE)
     label_positions = [m.start() for m in label_pattern.finditer(page_text)]
@@ -524,7 +525,7 @@ def fetch_official_event_weekend(event, year):
 
     for match in date_pattern.finditer(page_text):
         try:
-            row_year = int(match.group("year"))
+            row_year = int(match.group("year") or year)
             if row_year != year:
                 continue
             month2 = MONTHS[match.group("m2").lower()]
