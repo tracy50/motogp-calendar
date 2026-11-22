@@ -426,6 +426,18 @@ def fetch_official_weekends(year):
 # 分站比對
 # ============================================================
 
+def is_valencia_event(event):
+
+    circuit = (event.get("circuit") or {}).get("name") or ""
+    event_text = " ".join(
+        str(event.get(key) or "")
+        for key in ("name", "short_name", "sponsored_name")
+    )
+    combined = norm(circuit + " " + event_text)
+
+    return "valencia" in combined or "ricardo tormo" in combined
+
+
 def event_official_labels(event):
 
     country = (
@@ -491,7 +503,7 @@ def match_official_weekend(event, ranges):
     labels = set(event_official_labels(event))
     calendar_years = {start.year for start, _, _ in ranges}
 
-    if "valencia" in labels and 2026 in calendar_years:
+    if is_valencia_event(event) and 2026 in calendar_years:
         return date(2026, 11, 27), date(2026, 11, 29)
 
     matches = []
@@ -797,7 +809,7 @@ def build_events(season):
 
         if (
             year == 2026
-            and "valencia" in event_official_labels(event)
+            and is_valencia_event(event)
         ):
             weekend_start = date(2026, 11, 27)
             weekend_end = date(2026, 11, 29)
@@ -2122,6 +2134,7 @@ if __name__ == "__main__":
         print(f"ERROR: {exc}")
 
         raise
+
 
 
 
