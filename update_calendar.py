@@ -475,6 +475,33 @@ def match_official_weekend(event, ranges):
             matches.append((min(distances), start, end))
 
     if not matches:
+        # The official results API includes the event weekend as ISO dates.
+        # Prefer this structured official source when the public calendar
+        # index omits a round (as it currently does for Valencia).
+        event_start = event.get("date_start")
+        event_end = event.get("date_end")
+        if event_start and event_end and len(labels) == 1:
+            try:
+                start = date.fromisoformat(str(event_start)[:10])
+                end = date.fromisoformat(str(event_end)[:10])
+            except ValueError:
+                start = end = None
+
+            if (
+                start is not None
+                and end is not None
+                and 1 <= (end - start).days <= 4
+            ):
+                label = next(iter(labels))
+                ranges.append(
+                    (start, end, f"<<<DATE>>>{label}")
+                )
+                print(
+                    f"使用 MotoGP 官方 API 分站日期：{label} "
+                    f"{start}–{end}"
+                )
+                return start, end
+
         year = ranges[0][0].year if ranges else int(event.get("year") or 0)
         start, end = fetch_official_event_weekend(event, year)
         ranges.append(
@@ -864,6 +891,31 @@ def build_events(season):
             )
 
             local_start = parsed_local.replace(tzinfo=track_tz)
+
+            # The official event weekend can be moved while the session
+            # endpoint still carries the previous week's dates. If shifting
+            # by an exact number of whole weeks places the session inside
+            # the official weekend, align the stale date and preserve its
+            # local clock. Do not shift one-day weather delays.
+            if not (
+                weekend_start - timedelta(days=1)
+                <= local_start.date()
+                <= weekend_end + timedelta(days=1)
+            ):
+                for weeks in (-3, -2, -1, 1, 2, 3):
+                    shifted = local_start + timedelta(days=7 * weeks)
+                    if (
+                        weekend_start - timedelta(days=1)
+                        <= shifted.date()
+                        <= weekend_end + timedelta(days=1)
+                    ):
+                        print(
+                            f"對齊官方週末日期：{event.get('name')} "
+                            f"{session_type} {local_start.date()} "
+                            f"→ {shifted.date()}（API 日期落後/超前整週）"
+                        )
+                        local_start = shifted
+                        break
 
             # Keep the API's actual session date (including a one-day delay).
             # The official GP weekend is a guardrail, never a replacement
