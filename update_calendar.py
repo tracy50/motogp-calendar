@@ -475,13 +475,12 @@ def match_official_weekend(event, ranges):
             matches.append((min(distances), start, end))
 
     if not matches:
-        name = (
-            event.get("name")
-            or (event.get("country") or {}).get("name")
+        year = ranges[0][0].year if ranges else int(event.get("year") or 0)
+        start, end = fetch_official_event_weekend(event, year)
+        ranges.append(
+            (start, end, f"<<<DATE>>>{event_official_labels(event)[0]}")
         )
-        raise RuntimeError(
-            f"官方賽程找不到分站日期：{name}"
-        )
+        return start, end
 
     closest = min(distance for distance, _, _ in matches)
     best_dates = {
@@ -496,6 +495,63 @@ def match_official_weekend(event, ranges):
         )
 
     return next(iter(best_dates))
+
+
+def fetch_official_event_weekend(event, year):
+    """Fallback to the official event page when the season index omits a GP."""
+    labels = event_official_labels(event)
+    event_id = event.get("id")
+    if len(labels) != 1 or not event_id or not year:
+        raise RuntimeError(
+            f"無法建立官方分站頁面查詢：{event.get('name')}"
+        )
+
+    slug = labels[0].replace(" ", "-")
+    url = f"https://www.motogp.com/en/calendar/{year}/event/{slug}/{event_id}"
+    raw = request_bytes(url, {"Accept": "text/html"})
+    parser = TextExtractor()
+    parser.feed(raw.decode("utf-8", errors="replace"))
+    page_text = parser.text()
+
+    date_pattern = re.compile(
+        r"(?P<d1>\d{1,2})\s+(?:(?P<m1>[A-Za-z]{3,9})\s*)?"
+        r"[-–]\s*(?P<d2>\d{1,2})\s+"
+        r"(?P<m2>[A-Za-z]{3,9})\s+(?P<year>\d{4})"
+    )
+    label_pattern = re.compile(rf"\b{re.escape(labels[0])}\b", re.IGNORECASE)
+    label_positions = [m.start() for m in label_pattern.finditer(page_text)]
+    candidates = []
+
+    for match in date_pattern.finditer(page_text):
+        try:
+            row_year = int(match.group("year"))
+            if row_year != year:
+                continue
+            month2 = MONTHS[match.group("m2").lower()]
+            month1 = MONTHS[(match.group("m1") or match.group("m2")).lower()]
+            start = date(row_year, month1, int(match.group("d1")))
+            end = date(row_year + (month2 < month1), month2, int(match.group("d2")))
+            if not 1 <= (end - start).days <= 4:
+                continue
+            distance = min((abs(pos - match.start()) for pos in label_positions), default=10**9)
+            if distance <= 250:
+                candidates.append((distance, start, end))
+        except (KeyError, ValueError):
+            continue
+
+    if not candidates:
+        raise RuntimeError(
+            f"官方賽程索引未列出 {labels[0]}，且官方分站頁找不到日期："
+            f"{event.get('name')}；停止更新以保留舊 ICS。"
+        )
+
+    nearest = min(distance for distance, _, _ in candidates)
+    dates = {(start, end) for distance, start, end in candidates if distance == nearest}
+    if len(dates) != 1:
+        raise RuntimeError(
+            f"官方分站頁日期比對不唯一：{labels[0]} {dates}"
+        )
+    return next(iter(dates))
 
 
 # ============================================================
