@@ -496,32 +496,27 @@ def match_official_weekend(event, ranges):
 
         candidates = []
 
-        for label in KNOWN_OFFICIAL_LABELS:
+        for label in labels:
 
             label_n = norm(label)
 
             if not label_n:
                 continue
 
-            # 找日期前方最近的分站名稱
             pos_before = before.rfind(label_n)
 
             if pos_before >= 0:
-                distance = len(before) - (
-                    pos_before + len(label_n)
-                )
-
                 candidates.append(
-                    (distance, label_n)
+                    (
+                        len(before) - pos_before - len(label_n),
+                        label_n
+                    )
                 )
 
-            # 找日期後方最近的分站名稱
             pos_after = after.find(label_n)
 
             if pos_after >= 0:
-                candidates.append(
-                    (pos_after, label_n)
-                )
+                candidates.append((pos_after, label_n))
 
         if not candidates:
             continue
@@ -539,8 +534,7 @@ def match_official_weekend(event, ranges):
         if len(nearest_labels) != 1:
             continue
 
-        if nearest_labels.intersection(labels):
-            matches.append((nearest_distance, start, end))
+        matches.append((nearest_distance, start, end))
 
     if not matches:
 
@@ -1085,5 +1079,6 @@ if __name__ == "__main__":
         print(f"ERROR: {exc}")
 
         raise
+
 
 
