@@ -360,13 +360,13 @@ def parse_calendar_ranges(page_text, year):
 
                 # 同時保留日期前後的網頁文字
                 before = page_text[
-                    max(0, match.start() - 500):
+                    max(0, match.start() - 5000):
                     match.start()
                 ]
 
                 after = page_text[
                     match.end():
-                    min(len(page_text), match.end() + 500)
+                    min(len(page_text), match.end() + 5000)
                 ]
 
                 context = before + " <<<DATE>>> " + after
@@ -2100,6 +2100,7 @@ if __name__ == "__main__":
         print(f"ERROR: {exc}")
 
         raise
+
 
 
 
