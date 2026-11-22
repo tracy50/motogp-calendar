@@ -148,7 +148,7 @@ MONTHS = {
 KNOWN_OFFICIAL_LABELS = [
     "great britain", "san marino", "czechia",
     "netherlands", "thailand", "argentina",
-    "catalonia", "portugal", "valencia",
+    "catalonia", "portuguese", "portugal", "valencia",
     "australia", "adelaide", "indonesia",
     "malaysia", "germany", "france",
     "italy", "hungary", "aragon",
@@ -462,6 +462,9 @@ def event_official_labels(event):
 
     if country in ("Czech Republic", "Czechia"):
         labels.append("czechia")
+
+    if country == "Portugal":
+        labels.append("portuguese")
 
     if country in (
         "United Kingdom",
@@ -1079,3 +1082,4 @@ if __name__ == "__main__":
         print(f"ERROR: {exc}")
 
         raise
+
