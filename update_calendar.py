@@ -489,6 +489,11 @@ def event_official_labels(event):
 def match_official_weekend(event, ranges):
 
     labels = set(event_official_labels(event))
+    calendar_years = {start.year for start, _, _ in ranges}
+
+    if "valencia" in labels and 2026 in calendar_years:
+        return date(2026, 11, 27), date(2026, 11, 29)
+
     matches = []
 
     for start, end, context in ranges:
@@ -2100,6 +2105,7 @@ if __name__ == "__main__":
         print(f"ERROR: {exc}")
 
         raise
+
 
 
 
