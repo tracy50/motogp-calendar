@@ -8,12 +8,12 @@ MotoGP Calendar 3.0
 功能：
 - 自動取得 MotoGP 賽季、分站及場次
 - 只收錄 MotoGP Sprint (SPR) 與 Race (RAC)
-- 使用官方賽程頁交叉驗證週末日期
+- 直接使用 MotoGP 官方 API 的場次日期與時間
 - 保留 API 明確提供的時區資訊
 - API 沒有時區時，使用賽道當地時間
 - 轉換成 UTC ICS，Apple Calendar 自動顯示台灣時間
 - 每個事件提前 30 分鐘提醒
-- 下載失敗、日期比對失敗或驗證失敗時，不覆蓋舊 ICS
+- 下載失敗或驗證失敗時，不覆蓋舊 ICS
 - 原子寫入，避免寫到一半造成檔案損壞
 """
 
@@ -777,8 +777,6 @@ def build_events(season):
 
     year = int(season["year"])
 
-    official_ranges = fetch_official_weekends(year)
-
     api_events = as_list(
         get_json(
             f"/results/events?seasonUuid={season['id']}"
@@ -809,16 +807,7 @@ def build_events(season):
         if not relevant:
             continue
 
-        weekend_start, weekend_end = (
-            match_official_weekend(
-                event,
-                official_ranges
-            )
-        )
-
         matched_event_count += 1
-
-        track_tz = event_timezone(event)
 
         for session in relevant:
 
@@ -833,32 +822,12 @@ def build_events(season):
                 )
             )
 
-            # 官方週末最後一天為正賽日；
-            # Sprint 為前一天。
-            target_day = weekend_end - timedelta(
-                days=1 if session_type == "SPR" else 0
-            )
-
-            if not (
-                weekend_start <= target_day <= weekend_end
-            ):
-                raise RuntimeError(
-                    f"官方週末日期不合理："
-                    f"{event.get('name')} "
-                    f"{weekend_start}–{weekend_end}"
+            if parsed_local.tzinfo is None:
+                parsed_local = parsed_local.replace(
+                    tzinfo=track_tz
                 )
 
-            local_clock = parsed_local.time().replace(
-                tzinfo=None
-            )
-
-            local_start = datetime.combine(
-                target_day,
-                local_clock,
-                tzinfo=track_tz
-            )
-
-            start_utc = local_start.astimezone(
+            start_utc = parsed_local.astimezone(
                 timezone.utc
             )
 
@@ -905,16 +874,9 @@ def build_events(season):
                 )
             )
 
-            if parsed_local.date() != target_day:
-                print(
-                    f"官方日期校正：{event_title(event)} "
-                    f"{session_type}: "
-                    f"{parsed_local.date()} -> {target_day}"
-                )
-
     if matched_event_count == 0 or len(output) < 2:
         raise RuntimeError(
-            "官方賽程驗證後沒有足夠的 MotoGP 場次。"
+            "官方 MotoGP API 沒有回傳足夠的 Sprint／Race 場次。"
         )
 
     output.sort(key=lambda row: row[0])
@@ -1085,6 +1047,7 @@ if __name__ == "__main__":
         print(f"ERROR: {exc}")
 
         raise
+
 
 
 
