@@ -795,10 +795,17 @@ def build_events(season):
         if not relevant:
             continue
 
-        weekend_start, weekend_end = match_official_weekend(
-            event,
-            official_ranges
-        )
+        if (
+            year == 2026
+            and "valencia" in event_official_labels(event)
+        ):
+            weekend_start = date(2026, 11, 27)
+            weekend_end = date(2026, 11, 29)
+        else:
+            weekend_start, weekend_end = match_official_weekend(
+                event,
+                official_ranges
+            )
 
         matched_event_count += 1
 
@@ -829,6 +836,16 @@ def build_events(season):
                 parsed_local.time().replace(tzinfo=None),
                 tzinfo=track_tz
             )
+
+            if (
+                year == 2026
+                and "valencia" in event_official_labels(event)
+                and local_start.date()
+                != date(2026, 11, 28 if session_type == "SPR" else 29)
+            ):
+                raise RuntimeError(
+                    "瓦倫西亞站日期校驗失敗，停止更新以保留舊 ICS。"
+                )
 
             start_utc = local_start.astimezone(
                 timezone.utc
@@ -2105,6 +2122,7 @@ if __name__ == "__main__":
         print(f"ERROR: {exc}")
 
         raise
+
 
 
 
