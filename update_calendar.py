@@ -296,128 +296,41 @@ class TextExtractor(HTMLParser):
 
 
 def parse_calendar_ranges(page_text, year):
-
-    # Parse the structured GP rows (for example, "GP20 QATAR 6 - 8
-    # Nov 2026"). The old parser searched every date on the full page
-    # and guessed a nearby country name, which attached sessions to
-    # unrelated rounds and article dates.
+    """Parse only official GP rows; never infer a round from nearby prose."""
     row_pattern = re.compile(
         r"\bGP\s*(?P<round>\d{1,2})\s+"
         r"(?P<label>[A-Z][A-Z '&-]*?)\s+"
         r"(?P<d1>\d{1,2})\s+(?:(?P<month1>[A-Za-z]{3,9})\s*)?"
         r"[-–]\s*(?P<d2>\d{1,2})\s+"
-        r"(?P<month2>[A-Za-z]{3,9})\s+"
-        r"(?P<y>\d{4})",
+        r"(?P<month2>[A-Za-z]{3,9})\s+(?P<year>\d{4})",
         re.IGNORECASE,
     )
-    rows = []
+    rounds = {}
     for match in row_pattern.finditer(page_text):
         try:
             month2 = MONTHS[match.group("month2").lower()]
             month1 = MONTHS[(match.group("month1") or match.group("month2")).lower()]
-            y = int(match.group("y"))
-            start = date(y, month1, int(match.group("d1")))
-            end = date(y + (month2 < month1), month2, int(match.group("d2")))
+            row_year = int(match.group("year"))
+            start = date(row_year, month1, int(match.group("d1")))
+            end_year = row_year + (month2 < month1)
+            end = date(end_year, month2, int(match.group("d2")))
             if not 1 <= (end - start).days <= 4:
                 continue
             label = norm(match.group("label"))
-            rows.append((start, end, f"<<<DATE>>>{label}"))
+            previous = rounds.get(label)
+            current = (start, end, f"<<<DATE>>>{label}")
+            if previous and previous[:2] != current[:2]:
+                raise RuntimeError(f"官方賽程同一站日期衝突：{label}")
+            rounds[label] = current
         except (KeyError, ValueError):
             continue
-    if len(rows) >= MIN_OFFICIAL_ROUNDS:
-        return rows
 
-    found = []
-    occupied = []
-
-    patterns = [
-        re.compile(
-            r"(?P<d1>\d{1,2})\s*[-–]\s*"
-            r"(?P<d2>\d{1,2})\s+"
-            r"(?P<m2>[A-Za-z]+)\s+(?P<y>\d{4})"
-        ),
-        re.compile(
-            r"(?P<d1>\d{1,2})\s+"
-            r"(?P<m1>[A-Za-z]+)\s*[-–]\s*"
-            r"(?P<d2>\d{1,2})\s+"
-            r"(?P<m2>[A-Za-z]+)\s+"
-            r"(?P<y>\d{4})"
-        ),
-        re.compile(
-            r"(?P<d1>\d{1,2})\s*[-–]\s*"
-            r"(?P<d2>\d{1,2})\s+"
-            r"(?P<m2>[A-Za-z]+)"
-            r"(?!\s+\d{4})"
-        ),
-    ]
-
-    for pattern in patterns:
-        for match in pattern.finditer(page_text):
-
-            if any(
-                match.start() < b and match.end() > a
-                for a, b in occupied
-            ):
-                continue
-
-            try:
-                month2 = MONTHS[match.group("m2").lower()]
-                d1 = int(match.group("d1"))
-                d2 = int(match.group("d2"))
-
-                y = int(
-                    match.groupdict().get("y") or year
-                )
-
-                if match.groupdict().get("m1"):
-                    month1 = MONTHS[
-                        match.group("m1").lower()
-                    ]
-                else:
-                    month1 = month2
-
-                start = date(y, month1, d1)
-
-                end_year = y + (
-                    1 if month2 < month1 else 0
-                )
-
-                end = date(end_year, month2, d2)
-
-                if not 1 <= (end - start).days <= 4:
-                    continue
-
-                # 同時保留日期前後的網頁文字
-                before = page_text[
-                    max(0, match.start() - 5000):
-                    match.start()
-                ]
-
-                after = page_text[
-                    match.end():
-                    min(len(page_text), match.end() + 5000)
-                ]
-
-                context = before + " <<<DATE>>> " + after
-
-                found.append((start, end, context))
-                occupied.append(
-                    (match.start(), match.end())
-                )
-
-            except (KeyError, ValueError):
-                continue
-
-    unique = {}
-
-    for start, end, context in found:
-        unique[(start, end)] = context
-
-    return [
-        (start, end, context)
-        for (start, end), context in sorted(unique.items())
-    ]
-
+    if len(rounds) < MIN_OFFICIAL_ROUNDS:
+        raise RuntimeError(
+            f"官方 {year} 賽程 GP 列解析不足：{len(rounds)} 站；"
+            "停止更新以保留舊 ICS。"
+        )
+    return sorted(rounds.values())
 
 def fetch_official_weekends(year):
 
@@ -454,18 +367,6 @@ def fetch_official_weekends(year):
 # ============================================================
 # 分站比對
 # ============================================================
-
-def is_valencia_event(event):
-
-    circuit = (event.get("circuit") or {}).get("name") or ""
-    event_text = " ".join(
-        str(event.get(key) or "")
-        for key in ("name", "short_name", "sponsored_name")
-    )
-    combined = norm(circuit + " " + event_text)
-
-    return "valencia" in combined or "ricardo tormo" in combined
-
 
 def event_official_labels(event):
 
@@ -537,10 +438,6 @@ def event_official_labels(event):
 def match_official_weekend(event, ranges):
 
     labels = set(event_official_labels(event))
-    calendar_years = {start.year for start, _, _ in ranges}
-
-    if is_valencia_event(event) and 2026 in calendar_years:
-        return date(2026, 11, 27), date(2026, 11, 29)
 
     matches = []
 
@@ -664,12 +561,11 @@ def session_local_datetime(session_date, event):
 
     track_tz = event_timezone(event)
 
-    # 有明確 offset：轉換到賽道當地時區
-    # 沒有 offset：視為賽道當地時間
-    if parsed.tzinfo is not None:
-        parsed = parsed.astimezone(track_tz)
-
-    return parsed, track_tz
+    # MotoGP schedule API's `date` is a venue-local wall-clock value;
+    # its serialized Z/offset must not be treated as the session's UTC
+    # instant. Keep the displayed date and clock, then attach the circuit
+    # timezone exactly once when creating the calendar event.
+    return parsed.replace(tzinfo=None), track_tz
 
 
 # ============================================================
@@ -861,6 +757,7 @@ def build_events(season):
     seen_uids = set()
     seen_round_sessions = set()
     seen_rounds = set()
+    seen_weekends = set()
     matched_event_count = 0
 
     for event in api_events:
@@ -876,17 +773,11 @@ def build_events(season):
         if not relevant:
             continue
 
-        if (
-            year == 2026
-            and is_valencia_event(event)
-        ):
-            weekend_start = date(2026, 11, 27)
-            weekend_end = date(2026, 11, 29)
-        else:
-            weekend_start, weekend_end = match_official_weekend(
-                event,
-                official_ranges
-            )
+        weekend_start, weekend_end = match_official_weekend(
+            event,
+            official_ranges
+        )
+        seen_weekends.add((weekend_start, weekend_end))
 
         matched_event_count += 1
         round_labels = event_official_labels(event)
@@ -915,29 +806,22 @@ def build_events(season):
                 )
             )
 
-            target_day = weekend_end - timedelta(
-                days=1 if session_type == "SPR" else 0
-            )
+            local_start = parsed_local.replace(tzinfo=track_tz)
 
-            if not weekend_start <= target_day <= weekend_end:
-                raise RuntimeError(
-                    f"官方週末日期不合理：{event.get('name')}"
-                )
-
-            local_start = datetime.combine(
-                target_day,
-                parsed_local.time().replace(tzinfo=None),
-                tzinfo=track_tz
-            )
-
-            if (
-                year == 2026
-                and "valencia" in event_official_labels(event)
-                and local_start.date()
-                != date(2026, 11, 28 if session_type == "SPR" else 29)
+            # Keep the API's actual session date (including a one-day delay).
+            # The official GP weekend is a guardrail, never a replacement
+            # date. Larger shifts must also appear on the official calendar;
+            # otherwise fail closed and retain the previous ICS.
+            if not (
+                weekend_start - timedelta(days=1)
+                <= local_start.date()
+                <= weekend_end + timedelta(days=1)
             ):
                 raise RuntimeError(
-                    "瓦倫西亞站日期校驗失敗，停止更新以保留舊 ICS。"
+                    f"場次日期 {local_start.date()} 與官網週末 "
+                    f"{weekend_start}–{weekend_end} 相差超過一天："
+                    f"{event.get('name')}；"
+                    "停止更新以保留舊 ICS。"
                 )
 
             start_utc = local_start.astimezone(
@@ -974,34 +858,9 @@ def build_events(season):
                 f"{'衝刺賽' if sprint else '正賽'}"
             )
 
-            if year == 2026 and "瓦倫西亞站" in title:
-                target_day = date(
-                    2026,
-                    11,
-                    28 if sprint else 29
-                )
-                local_start = datetime.combine(
-                    target_day,
-                    parsed_local.time().replace(tzinfo=None),
-                    tzinfo=track_tz
-                )
-                start_utc = local_start.astimezone(timezone.utc)
-                end_utc = start_utc + duration
-
             circuit = (
                 (event.get("circuit") or {}).get("name") or ""
             )
-
-            if year == 2026 and "瓦倫西亞站" in title:
-                expected_day = date(
-                    2026,
-                    11,
-                    28 if sprint else 29
-                )
-                if local_start.date() != expected_day:
-                    raise RuntimeError(
-                        "瓦倫西亞站最終日期校驗失敗，停止更新。"
-                    )
 
             output.append(
                 (
@@ -1017,9 +876,12 @@ def build_events(season):
         matched_event_count == 0
         or len(output) < 2
         or len(seen_rounds) < MIN_OFFICIAL_ROUNDS
+        or len(seen_weekends) != len(official_ranges)
     ):
         raise RuntimeError(
-            f"官方 API 場次不足或分站比對不全（分站數：{len(seen_rounds)}），停止更新以保護舊 ICS。"
+            f"官方 API 場次不足或分站比對不全（識別站數：{len(seen_rounds)}；"
+            f"已配對週末：{len(seen_weekends)}/{len(official_ranges)}），"
+            "停止更新以保護舊 ICS。"
         )
 
     output.sort(key=lambda row: row[0])
@@ -1190,12 +1052,4 @@ if __name__ == "__main__":
         print(f"ERROR: {exc}")
 
         raise
-
-
-
-
-
-
-
-#!/usr/bin/env python3
 
