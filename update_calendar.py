@@ -449,10 +449,16 @@ def event_official_labels(event):
     for hint, label in ROUND_LABEL_HINTS.items():
 
         if norm(hint) in combined:
-            matched_label = norm(label)
-            if matched_label == "portugal":
-                return ["portugal", "portuguese"]
-            return [matched_label]
+            return [norm(label)]
+
+    event_labels = [
+        label
+        for label in KNOWN_OFFICIAL_LABELS
+        if re.search(rf"\b{re.escape(norm(label))}\b", combined)
+    ]
+
+    if len(event_labels) == 1:
+        return event_labels
 
     labels = [norm(country)]
 
@@ -1079,6 +1085,7 @@ if __name__ == "__main__":
         print(f"ERROR: {exc}")
 
         raise
+
 
 
 
