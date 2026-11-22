@@ -297,6 +297,36 @@ class TextExtractor(HTMLParser):
 
 def parse_calendar_ranges(page_text, year):
 
+    # Parse the structured GP rows (for example, "GP20 QATAR 6 - 8
+    # Nov 2026"). The old parser searched every date on the full page
+    # and guessed a nearby country name, which attached sessions to
+    # unrelated rounds and article dates.
+    row_pattern = re.compile(
+        r"\bGP\s*(?P<round>\d{1,2})\s+"
+        r"(?P<label>[A-Z][A-Z '&-]*?)\s+"
+        r"(?P<d1>\d{1,2})\s+(?:(?P<month1>[A-Za-z]{3,9})\s*)?"
+        r"[-–]\s*(?P<d2>\d{1,2})\s+"
+        r"(?P<month2>[A-Za-z]{3,9})\s+"
+        r"(?P<y>\d{4})",
+        re.IGNORECASE,
+    )
+    rows = []
+    for match in row_pattern.finditer(page_text):
+        try:
+            month2 = MONTHS[match.group("month2").lower()]
+            month1 = MONTHS[(match.group("month1") or match.group("month2")).lower()]
+            y = int(match.group("y"))
+            start = date(y, month1, int(match.group("d1")))
+            end = date(y + (month2 < month1), month2, int(match.group("d2")))
+            if not 1 <= (end - start).days <= 4:
+                continue
+            label = norm(match.group("label"))
+            rows.append((start, end, f"<<<DATE>>>{label}"))
+        except (KeyError, ValueError):
+            continue
+    if len(rows) >= MIN_OFFICIAL_ROUNDS:
+        return rows
+
     found = []
     occupied = []
 
@@ -456,6 +486,13 @@ def event_official_labels(event):
         )
     )
 
+    # Circuit identity is stable when an API event name or country is
+    # stale. Resolve it before sponsored/event labels.
+    circuit_n = norm(circuit)
+    for hint, label in ROUND_LABEL_HINTS.items():
+        if norm(hint) in circuit_n:
+            return [norm(label)]
+
     combined = norm(circuit + " " + event_text)
 
     for hint, label in ROUND_LABEL_HINTS.items():
@@ -582,7 +619,21 @@ def event_timezone(event):
     if country == "Australia" and "adelaide" in circuit:
         return ZoneInfo("Australia/Adelaide")
 
-    tz_name = TZ.get(country)
+    labels = event_official_labels(event)
+    label_to_timezone = {
+        "qatar": "Asia/Qatar", "malaysia": "Asia/Kuala_Lumpur",
+        "portugal": "Europe/Lisbon", "valencia": "Europe/Madrid",
+        "thailand": "Asia/Bangkok", "brazil": "America/Sao_Paulo",
+        "usa": "America/Chicago", "spain": "Europe/Madrid",
+        "france": "Europe/Paris", "italy": "Europe/Rome",
+        "hungary": "Europe/Budapest", "czechia": "Europe/Prague",
+        "netherlands": "Europe/Amsterdam", "germany": "Europe/Berlin",
+        "great britain": "Europe/London", "austria": "Europe/Vienna",
+        "japan": "Asia/Tokyo", "indonesia": "Asia/Makassar",
+        "australia": "Australia/Melbourne", "san marino": "Europe/Rome",
+        "argentina": "America/Argentina/Buenos_Aires",
+    }
+    tz_name = next((label_to_timezone[x] for x in labels if x in label_to_timezone), None) or TZ.get(country)
 
     if not tz_name:
         raise RuntimeError(
@@ -645,6 +696,23 @@ def event_title(event):
             )
         )
     )
+
+    labels = event_official_labels(event)
+    label_to_title = {
+        "thailand": "泰國站", "brazil": "巴西站", "argentina": "阿根廷站",
+        "usa": "美國站", "spain": "西班牙站", "france": "法國站",
+        "italy": "義大利站", "hungary": "匈牙利站", "czechia": "捷克站",
+        "netherlands": "荷蘭站", "germany": "德國站",
+        "great britain": "英國站", "austria": "奧地利站",
+        "japan": "日本站", "indonesia": "印尼站", "australia": "澳洲站",
+        "malaysia": "馬來西亞站", "qatar": "卡達站",
+        "portugal": "葡萄牙站", "valencia": "瓦倫西亞站",
+        "catalonia": "加泰隆尼亞站", "aragon": "亞拉岡站",
+        "san marino": "聖馬利諾站",
+    }
+    for label in labels:
+        if label in label_to_title:
+            return label_to_title[label]
 
     extras = {
         "catalunya": "加泰隆尼亞站",
@@ -791,6 +859,8 @@ def build_events(season):
 
     output = []
     seen_uids = set()
+    seen_round_sessions = set()
+    seen_rounds = set()
     matched_event_count = 0
 
     for event in api_events:
@@ -819,12 +889,24 @@ def build_events(season):
             )
 
         matched_event_count += 1
+        round_labels = event_official_labels(event)
+        if len(round_labels) != 1:
+            raise RuntimeError(
+                f"賽事無法唯一識別：{event.get('name')}；停止更新。"
+            )
+        round_key = round_labels[0]
+        seen_rounds.add(round_key)
 
         for session in relevant:
 
             session_type = str(
                 session.get("type", "")
             ).upper()
+
+            round_session_key = (round_key, session_type)
+            if round_session_key in seen_round_sessions:
+                print(f"忽略 API 重複場次：{round_key} / {session_type}")
+                continue
 
             parsed_local, track_tz = (
                 session_local_datetime(
@@ -885,6 +967,7 @@ def build_events(season):
                 )
 
             seen_uids.add(uid)
+            seen_round_sessions.add(round_session_key)
 
             title = (
                 f"MotoGP｜{event_title(event)}｜"
@@ -930,9 +1013,13 @@ def build_events(season):
                 )
             )
 
-    if matched_event_count == 0 or len(output) < 2:
+    if (
+        matched_event_count == 0
+        or len(output) < 2
+        or len(seen_rounds) < MIN_OFFICIAL_ROUNDS
+    ):
         raise RuntimeError(
-            "官方 MotoGP API 沒有回傳足夠的 Sprint／Race 場次。"
+            f"官方 API 場次不足或分站比對不全（分站數：{len(seen_rounds)}），停止更新以保護舊 ICS。"
         )
 
     output.sort(key=lambda row: row[0])
